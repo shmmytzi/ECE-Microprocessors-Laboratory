@@ -1,0 +1,92 @@
+.org 0x000
+.def wagon = r16
+.equ delay = 1000
+    
+ldi wagon, LOW(RAMEND)
+out SPL, wagon
+ldi wagon, HIGH(RAMEND)
+out SPH, wagon
+    
+ser wagon
+out DDRD, wagon
+ldi wagon, 0x01		; start from 00000001  
+set			; T flag set to 1
+			; T flag = 1 -> direction = left && 
+			; T flag = 0 -> direction = right
+left:
+    out PORTD, wagon	 
+    clt			; clear T flag
+    ldi r24, low(delay) 
+    ldi r25, high(delay)
+    rcall wait_x_msec	
+    lsl wagon		; logical shift left of wagon
+    cpi wagon, 0x00	; compare with zero
+    brne left		
+rotateright:		
+    ldi r24, low(1000)	
+    ldi r25, high(1000)
+    rcall wait_x_msec	
+    clt			
+    ldi wagon, 0x40	; 01000000
+right:
+    out PORTD, wagon	; output the current value
+    ldi r24, low(delay)
+    ldi r25, high(delay)
+    rcall wait_x_msec
+    lsr wagon      
+    cpi wagon, 0x00
+    brne right
+
+rotateleft: ; when it reaches the right end, it turns to the left
+    ldi r24, low(1000)
+    ldi r25, high(1000)
+    rcall wait_x_msec
+    set ; T flag set to 1
+    ldi wagon, 0x02
+    rjmp left
+
+    ; this version of wait_x_msec only works with values up to 4095 
+    ; (due to 12bit word limit)
+    ; however, this is suitable for this occassion 
+    ; (we only need values up to 1000)
+    
+    ; this routine is used to produce a delay of 973 cycles
+delay_inner:
+    ldi r23, 246	    ; 1 cycle
+loop3:			    ; this produces 4*245 + 8 = 988 cycles
+    dec r23               ; 1 cycle
+    nop                   ; 1 cycle
+    brne loop3            ; 2 cycle if r23 != 0 else 1 cycle
+    nop                   ; 1 cycle
+    ret                   ; 4 cycles
+    
+wait_x_msec:		    ; wait_x_msec gives in total 5 cycles
+    push r24              ; 2 cycles
+    push r25              ; 2 cycles
+
+    ldi r22, 16           ; 1 cycle
+    
+outer_loop:
+    
+    ldi r24, low(delay)  ; 1 cycle
+    ldi r25, high(delay) ; 1 cycle
+    
+    ; outer_loop gives in total 2 cycles
+    
+    ; loop4 gives in total 994 * x - 1 cycles
+    ; it is the internal 1000 * x in 16*1000*x
+loop4: 
+    rcall delay_inner     ; 988+1+3 cycles
+    sbiw r24, 1           ; (2 cycles)
+    brne loop4            ; (1 or 2 cycles)
+    
+    ; it is the 16 in 16*1000*x
+    dec r22               ; (1 cycle)
+    brne outer_loop       ; 2 cycle if r22 != 0 else 1 cycle
+    
+    ; we have achieved 15.904*x + c cycles of delay up to this point
+
+ extra:   pop r25               ; (2 cycles)
+          pop r24               ; (2 cycles)
+                
+          ret
