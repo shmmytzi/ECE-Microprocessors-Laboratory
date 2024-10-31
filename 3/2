@@ -1,0 +1,108 @@
+#define F_CPU 16000000UL
+#include "avr/io.h"
+#include <util/delay.h>
+
+void adc_init(void) {
+	// Initialize ADC
+	// Set reference voltage to AVcc (with external capacitor at AREF pin)
+	ADMUX = (1 << REFS0);
+    
+	// Set input channel to ADC1 (=0001)
+	ADMUX |= (1 << MUX0);
+	
+	// Set ADC pre-scaler to 128 (for 16 MHz clock, ADC clock = 16MHz /128 = 125 kHz - within the range)
+	ADCSRA = (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
+	
+	// Enable the ADC
+	ADCSRA |= (1 << ADEN);
+}
+
+uint16_t adc_read(void) {
+	// Set ADSC flag of ADSCRA
+	ADCSRA |= (1 << ADSC);
+	
+	// Wait for ADSC flag to become '0'
+    while (ADCSRA & (1 << ADSC));
+ 
+    return ADC;
+}
+
+int main() 
+{
+	
+	adc_init();			// Initialize ADC
+	
+	int table[13] = {0xFA, 0xE5, 0xD1, 0xBC, 0xA8, 0x94, 0x7F, 0x6B, 0x57, 0x42, 0x2E, 0x19, 0x05};
+	// Set fast non-inverted PWM 8 bit and pre-scale  = 1
+	TCCR1A = (1 << WGM10) | (1 << COM1A1);
+	TCCR1B = (1 << WGM12) | (1 << CS10);
+	
+    DDRB = 0xFF;            // PB5-0 as output
+    DDRC= 0x00;             // PORTC as input
+	DDRD = 0b00011111;		// PD4-0 as output			
+	int index = 6;			// Duty Cycle =  50%
+    OCR1A = table[index];
+	
+	uint16_t ADC_value = 0;
+	int reset = 0;
+	
+	while(1){
+        
+		if(reset == 16){
+            
+			reset = 0;
+			ADC_value = (ADC_value >> 4); // Divide by 2^4 = 16
+            
+            if (ADC_value >= 0 & ADC_value <= 200) {
+                PORTD = 0x01;
+            }
+            
+            else if (ADC_value > 200 & ADC_value <= 400) {
+                PORTD = 0x02;
+            }
+            
+            else if (ADC_value > 400 & ADC_value <= 600) {
+                PORTD = 0x04;
+            }
+            
+            else if (ADC_value > 600 & ADC_value <= 800) {
+                PORTD = 0x08;
+            }
+            
+            else {
+                PORTD = 0x10;
+            }
+            ADC_value =0;
+		}
+		
+        _delay_ms(100);					// Call delay
+		ADC_value += adc_read();		// Read ADC_value
+		reset++;						// Keep track of how many values we have
+		 
+        /*Increase or decrease the Duty Cycle
+		based on which button is pressed*/
+        unsigned char flag = PIND;
+        
+        //wait for the button to be un-pressed
+        //while (!(flag & (1 << PD5)) | !(flag & (1<<PD6))) {
+         //   flag = PIND;
+        //}
+        
+        if ((PIND & 0x20) == 0x00) {        // If button on PD5 is pressed
+            _delay_ms(5);                   // Debounce delay
+            while ((PIND & 0x20) == 0x00);  // Wait while button is pressed
+            if (index > 0) {
+                OCR1A = table[--index];     // Decrease index, increase duty cycle
+            }
+        }
+
+        if ((PIND & 0x40) == 0x00) {        // If button on PD6 is pressed
+            _delay_ms(5);                   // Debounce delay
+            while ((PIND & 0x40) == 0x00);  // Wait while button is pressed
+            if (index < 12) {
+                OCR1A = table[++index];     // Increase index, decrease duty cycle
+            }
+        }
+    
+	}
+}
