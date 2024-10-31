@@ -1,0 +1,51 @@
+.include "m328PBdef.inc"
+.def r_a = r16
+.def r_b = r17
+.def r_c = r18
+.def r_d = r19
+.def f_0 = r20
+.def f_1 = r21
+.def i = r22	; i is counter for loop
+     
+ldi r_a, 0x51	; = 81 in decimal
+ldi r_b, 0x41	; = 65 in decimal
+ldi r_c, 0x21	; = 33 in decimal
+ldi r_d, 0x01	; = 01 in decimal
+ldi i, 0x06	; = 06 in decimal  
+    
+; init stack pointer
+ldi r24, low(RAMEND)
+out SPL, r24
+ldi r24, high(RAMEND)
+out SPH, r24   
+    
+    main:
+		    ; calculate F0 = (A*B_ + B_*D)_
+    com r_b	    ; B is now B_
+    mov f_0, r_a    ; temporary save A
+    and f_0, r_b    ; f_0 is now A*B_
+    mov r23, r_d    ; temporary save D
+    and r23, r_b    ; r23 is now B_*D
+    or f_0, r23	    ; f_0 is now F0
+    com f_0 
+    com r_b
+		    ; calculate F1 = (A+C_) * (B*D_)
+    com r_c	    ; C is now C_
+    mov f_1, r_a    ; temporary save A
+    or f_1, r_c	    ; f_1 is now A+C_
+    com r_d
+    mov r23, r_b    ; temporary save B
+    or r23, r_d
+    and f_1, r23    ; f_1 is now F1
+    com r_c
+    com r_d
+    
+    subi r_a, -1
+    subi r_b, -2
+    subi r_c, -3
+    subi r_d, -4
+    
+    subi i, 1
+    brne main
+    
+    rjmp main
