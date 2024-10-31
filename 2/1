@@ -1,0 +1,123 @@
+.include "m328PBdef.inc"
+    
+.equ FOSC_MHZ = 16
+.equ DEL_mS = 500		; Delay in mS (<= 4095)
+.equ DEL_NU = FOSC_MHZ * DEL_mS ; Routine: 1000 * DEL_NU + 6 Cycles
+.def input = r21 
+.def counter = r22
+
+.equ DEL_Control_mS = 5   
+.equ DEL_Control_NU = FOSC_MHZ * DEL_Control_mS   
+    
+.org 0x0
+rjmp reset
+
+.org 0x4
+rjmp isr1
+    
+reset:
+    ; Init SP
+    ldi r24, LOW(RAMEND)
+    out SPL, r24
+    ldi r24, HIGH(RAMEND)
+    out SPH, r24  
+    
+    ser r24
+    out DDRC, r24 ; Init PORTC as Output  
+    clr r24
+    out DDRD, r24 ; Init PORTD as Input
+
+    ; Interrupt on Rising Edge of INT1 Pin
+    ldi r24, (1<<ISC11) | (1<<ISC10)
+    sts EICRA, r24
+
+    ; Enable the INT1 Interrupt
+    ldi r24, (1<<INT1)
+    out EIMSK, r24
+
+    ; Enable General Flag of Interrupts
+    sei
+    
+    ; Clear All Pins of PORTC
+    clr r24
+    out PORTC, r24
+    
+    clr counter
+    
+main:
+    in input, PIND	; Load Input PD5
+    ; Roll the Carrier so Carrier holds PD5
+    rol input          
+    rol input
+    rol input
+    brcs enable		    ; If C is 1* 
+    cli			    ; Else  interrupts will be immediately disabled
+			    ; Clear External Interrupt 1 Flag
+    rjmp main
+    
+enable:
+    ; Enable General Flag of Interrupts
+    sei 
+    rjmp main
+
+; External Interrupt 1 Service Routine
+isr1:
+    push r23
+    push r24
+    push r25
+    in r25, SREG
+    push r25            ; Save r23, r24, 25, SREG to Stack
+    
+control:
+    ; Debouncing
+    ; Clear External Interrupt 1 Flag
+    ldi r24, (1 << INTF1)
+    out EIFR, r24    
+    ldi r24, low(DEL_Control_NU)
+    ldi r25, high(DEL_Control_NU) 
+    rcall delay_mS
+    sbic EIFR, INTF1    ; Tests if INTF1 = 0
+    rjmp exit		; Skips if INTF1 = 0
+   
+    cpi counter, 63     ; Compare Reg with Immediate
+    brne out_to_leds	; If Counter < 63 (C = 1)
+    clr counter		; Counter = 0
+    
+out_to_leds:
+    inc counter		; Rd = Rd + 1
+    out PORTC, counter  
+    ldi r24, low(DEL_NU)
+    ldi r25, high(DEL_NU)
+    rcall delay_mS
+    rjmp exit
+    
+    ; Delay of 1000 * DEL_NU + 6
+    ; Delay Code of 2.1
+delay_mS:
+    ; Total Delay 996 Cycles
+    ldi r23, 249
+loop_inn:
+    dec r23
+    nop
+    brne loop_inn
+    
+    sbiw r24, 1
+    brne delay_mS
+    ret
+    
+exit:   
+    ; Clear All Pins of PORTC
+    ;clr r24
+    ;out PORTC, r24 
+    clr input
+ 
+    ; Clear External Interrupt 1 Flag
+    ldi r24, (1 << INTF1)
+    out EIFR, r24 
+
+    pop r25
+    out SREG, r25
+    pop r25
+    pop r24
+    pop r23 ; Retrieve r23, r24, 25, SREG from Stack
+    reti    ; Return from interrupt
