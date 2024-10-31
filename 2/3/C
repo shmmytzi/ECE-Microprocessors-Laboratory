@@ -1,0 +1,46 @@
+#define F_CPU 16000000UL
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+volatile int pointer = 0; 
+int counter;
+
+ISR(INT1_vect){         // Interrupt Service Routine for External Interrupt 1
+   
+    if(pointer == 0){   // if led is off
+        pointer = 1;    // turn it on
+        PORTB = 0x01;   // turn on PB0
+        sei();          // enable global interrupts
+        for(counter=1; counter<=5000; counter++)
+        {
+            _delay_ms(1);   // delay for 5 sec
+        }
+        PORTB = 0x00;       // turn off the led
+    }
+    else
+    {                       // if led is on
+        PORTB = 0xFF;       // turn on all the leds of portB
+        for(counter=1; counter<=500; counter++)
+        {
+            _delay_ms(1);   // delay 0.5 seconds
+        }
+        PORTB = 0x01;       // turn on PB0
+        counter=1;
+    }
+}
+
+int main(){
+    // Configure External Interrupt 1 to trigger on rising edge
+    EICRA = (1 << ISC11) | (1 << ISC10); 
+    EIMSK = (1 << INT1);    // Enable External Interrupt 1
+   
+    sei();                  // enable global interrupts
+   
+    DDRB = 0xFF;            // Configure PORTB as output
+   
+    while(1){
+        PORTB = 0x00;       // turn all the leds off
+        pointer=0;
+    }
+}
