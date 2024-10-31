@@ -1,0 +1,67 @@
+.include "m328PBdef.inc"
+
+.equ FOSC_MHZ = 16	    ; MHz
+.equ DEL_mS = 561	    ; x mS ; x = 1, ..., 65535
+			    ; x mS ; x = 1, ..., 0b1111111111111111
+			    ; highest number that can be represented 
+			    ; by an unsigned 16-bit binary
+			    
+.equ F1 = FOSC_MHZ*DEL_mS   ; Fl = 16M*xm = 16*1000*x cycles
+  
+    ldi r24, LOW(RAMEND)    ; initialize stack pointer
+    out SPL, r24
+    ldi r24, HIGH(RAMEND)
+    out SPH, r24
+	
+    ; 16 = 2^4 = 10000, *16 will shift left 4 bits binary
+    ; 12 bits binary left so highest number that is safe
+    ; to not overflow is 4095 = 111111111111
+    ; x is 1, ..., 4095 to not overflow 
+    
+start:  
+    ldi r24, low(DEL_mS)    ; Load DEL_mS (lower byte)
+    ldi r25, high(DEL_mS)   ; Load DEL_mS (upper byte)
+    rcall wait_x_msec
+    rjmp start
+    
+    ; delay_inner gives in total ~1000 cycles
+    ; it is the internal 1000 in 16*1000*x
+delay_inner:
+    ldi r23, 246	    ; 1 cycle
+loop3:			    ; this produces 4*245 + 8 = 988 cycles
+    dec r23               ; 1 cycle
+    nop                   ; 1 cycle
+    brne loop3            ; 2 cycle if r23 != 0 else 1 cycle
+    nop                   ; 1 cycle
+    ret                   ; 4 cycles
+    
+wait_x_msec:		    ; wait_x_msec gives in total 5 cycles
+    push r24              ; 2 cycles
+    push r25              ; 2 cycles
+
+    ldi r22, 16           ; 1 cycle
+    
+outer_loop:
+    
+    ldi r24, low(DEL_mS)  ; 1 cycle
+    ldi r25, high(DEL_mS) ; 1 cycle
+    
+    ; outer_loop gives in total 2 cycles
+    
+    ; loop4 gives in total 994 * x - 1 cycles
+    ; it is the internal 1000*x in 16*1000*x
+loop4: 
+    rcall delay_inner     ; 988+1+3 cycles
+    sbiw r24, 1           ; (2 cycles)
+    brne loop4            ; (1 or 2 cycles)
+    
+    ; it is the 16 in 16*1000*x
+    dec r22               ; (1 cycle)
+    brne outer_loop       ; 2 cycle if r22 != 0 else 1 cycle
+    
+    ; we have achieved 15.904*x + c cycles of delay up to this point
+
+ extra:   pop r25               ; (2 cycles)
+          pop r24               ; (2 cycles)
+                
+          ret
