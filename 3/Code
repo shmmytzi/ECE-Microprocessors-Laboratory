@@ -1,1 +1,96 @@
+.include "m328PBdef.inc"   
+    
+.def DC_VALUE = r20	    ; Duty Cycle
+.def DC_COUNTER = r18	    ; Counter for DC Matrix
+.def temp = r16		    ; Input
+    
+.org 0x0
+    rjmp reset  
+    
+reset:
+    ; Init SP
+    ldi r24, LOW(RAMEND)
+    out SPL, r24
+    ldi r24, HIGH(RAMEND)
+    out SPH, r24
+    
+    ; Mode 5: Fast PWM, 8-bit with TOP value 0x00FF (= 255)
+    ; WGM13 = 0, WGM12 = 1 in TCCR1B, WGM11 = 0, WGM10 = 1 in TCCR1A
+    ; Non-inverting PWM in PB1 is (COM1A0, COM1A1) = (0, 1)in TCCR1A
+    ldi temp, (1<<WGM10) | (1<<COM1A1)
+    sts TCCR1A, temp
+    ; PWM of 62500Hz in a 16MHz CLK needs CLK/256
+    ; CS12 = 1, CS11 = 0, CS10 = 0 in TCCR1B
+    ldi temp, (1<<WGM12) | (1<<CS10) 
+    sts TCCR1B, temp
+    
+    ser temp
+    out DDRB, temp	    ; Init PORTB as Output  
+    clr temp
+    out DDRD, temp	    ; Init PORTD as Input    
+    
+    ; Load the address of 'matrix' into the Z register. Multiplies
+    ; word address with 2 to achieve the byte address, and uses the
+    ; functions high() and low() to calculate high and low address byte.
+    
+    ldi ZL, high(2*matrix)  ; Load high part of byte address into ZH
+    ldi ZH, low(2*matrix)   ;  Load low part of byte address into ZL
+    
+    ldi DC_COUNTER, 6	    ; Init DC_VALUE 50% (= 0x7F)
+    adiw ZL, 6
+    
+    lpm DC_VALUE, Z
+    sts OCR1AL, DC_VALUE
 
+main:
+    sbis PIND, 3	    ; Check if PD3 is 1
+    rjmp increase	    ; Then, if PD3 = 1, increase by 8%
+   	    
+    sbis PIND, 4
+    rjmp decrease
+
+    rjmp main
+    
+load_new_DC_PD3:
+    cpi DC_COUNTER, 12	    ; Check if DC_VALUE = 98%
+    breq out_to_leds
+    inc DC_COUNTER
+    ldi ZL, low(2*matrix)   ;  Load low part of byte address into ZL
+    ldi ZH, high(2*matrix)  ; Load high part of byte address into ZH
+    
+    add ZL, DC_COUNTER
+    
+    lpm DC_VALUE, Z
+    rjmp out_to_leds
+ 
+load_new_DC_PD4:
+    cpi DC_COUNTER, 0	    ; Check if DC_VALUE = 02%
+    breq out_to_leds
+    dec DC_COUNTER
+    ldi ZL, low(2*matrix)   ;  Load low part of byte address into ZL
+    ldi ZH, high(2*matrix)  ; Load high part of byte address into ZH
+    
+    add ZL, DC_COUNTER
+   
+    lpm DC_VALUE, Z
+    rjmp out_to_leds
+    
+out_to_leds:
+    sts OCR1AL, DC_VALUE    
+    rjmp main
+    
+increase:		    ; Debouncing 
+    sbis PIND, 3	    ; Check if still PD3 = 1        
+    rjmp increase	    ; If yes, stall till it is released 
+    rjmp load_new_DC_PD3
+    
+decrease:		    ; Debouncing
+    sbis PIND, 4
+    rjmp decrease    
+    rjmp load_new_DC_PD4
+    
+matrix: 
+    ; Init memory with 13 (2-byte) values
+    ; TOP value for Fast PWM, 8-bit is 0x00FF (= 255), 100% = 1 + TOP = 256
+    ; .dw 0x05, 0x19, 0x2E, 0x42, 0x57, 0x6B, 0x7F, 0x94, 0xA8, 0xBC, 0xD1, 0xE5, 0xFA
+    .db 5, 26, 46, 66, 87, 107, 128, 148, 168, 189, 209, 230, 250
