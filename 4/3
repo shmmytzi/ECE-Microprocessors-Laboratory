@@ -84,16 +84,26 @@ void lcd_init()
 
 void led_data(uint16_t data)
 {
-    PORTB = 0;
     
-    if (data > 200) {PORTB = 1;}
-    if (data > 340) {PORTB = 3;}
-    if (data > 480) {PORTB = 7;}
-    if (data > 620) {PORTB = 15;}
-    if (data > 760) {PORTB = 31;}
-    if (data > 900) {PORTB = 63;}
+    if (data == 0) {PORTB = 0;}
+    if (data > 0) {PORTB = 1;}
+    if (data > 40) {PORTB = 3;}
+    if (data > 80) {PORTB = 7;}
+    if (data > 120) {PORTB = 15;}
+    if (data > 160) {PORTB = 31;}
+    if (data > 180) {PORTB = 63;}
+    
+    if (data > threshold)
+    {
+       PORTB ^= 63;
+       _delay_ms(300);
+       PORTB = 0;
+       _delay_ms(300);
+       PORTB ^= 63;
+       _delay_ms(300);
+       PORTB = 0;
+    }
 }
-
 
 ISR(ADC_vect)
 {
@@ -125,6 +135,7 @@ int main() {
         
         if (gas_detected)
         {
+           PORTB = 63;
            lcd_clear_display();
            char signal[] = "GAS DETECTED";
            
@@ -133,21 +144,19 @@ int main() {
                lcd_data(signal[i]);
            }
            
-           
            while (gas_detected)
-           {               
-               led_data(gas_value);
-               _delay_ms(100);        
+           {                
+               led_data(gas_value);         
+               _delay_ms(100);
                ADCSRA |= (1<<ADSC);
-               if (!gas_detected) { break; }
-           }
-           
+           }  
         }
         
         else  
         {
-           lcd_clear_display(); 
            PORTB = 0;
+           lcd_clear_display(); 
+           
            char signal[] = "CLEAR";
            
            for (int i=0; signal[i]!=0; i++)
@@ -157,7 +166,8 @@ int main() {
            
            while (!gas_detected)
            {
-               _delay_ms(100);
+               led_data(gas_value);
+               _delay_ms(100);  
                ADCSRA |= (1<<ADSC);
           
            }
